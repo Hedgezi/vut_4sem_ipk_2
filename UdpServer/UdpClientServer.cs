@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using vut_ipk2.Common.Auth;
 using vut_ipk2.Common.Enums;
+using vut_ipk2.Common.Models;
 using vut_ipk2.Common.Structures;
 using vut_ipk2.UdpServer.Messages;
 
@@ -15,14 +16,13 @@ public class UdpClientServer
     private readonly AuthDataChecker _authDataChecker;
 
     private ushort _messageCounter;
-    private FsmState _fsmState;
+    private FsmState _fsmState = FsmState.Auth;
 
     private readonly FixedSizeQueue<ushort> _awaitedMessages = new(200); // all CONFIRM messages go here
-
-    // remember received messages for deduplication
-    private readonly FixedSizeQueue<ushort> _receivedMessages = new(200);
+    private readonly FixedSizeQueue<ushort> _receivedMessages = new(200); // remember received messages for deduplication
 
     private readonly UdpClient _client;
+    private Room? _currentRoom;
 
     public UdpClientServer(IPAddress ip, int confirmationTimeout, int maxRetransmissions,
         AuthDataChecker authDataChecker)
@@ -32,34 +32,6 @@ public class UdpClientServer
         _authDataChecker = authDataChecker;
 
         _client = new UdpClient(new IPEndPoint(ip, 0)); // TODO: Set port
-    }
-    
-    public static async Task<UdpClientServer?> CreateNewConnectionAfterAuth(IPAddress ip, int confirmationTimeout, int maxRetransmissions,
-        AuthDataChecker authDataChecker, ushort messageId, string username, string displayName, string secret)
-    {
-        var client = new UdpClientServer(ip, confirmationTimeout, maxRetransmissions, authDataChecker);
-
-        client._awaitedMessages.Enqueue(messageId);
-        
-        if (!client._authDataChecker.CheckAuthData(username, secret))
-        {
-            for (var i = 0; i < 1 + client._maxRetransmissions; i++)
-            {
-                await client._client.SendAsync(
-                    UdpMessageGenerator.GenerateReplyMessage(client._messageCounter, false, messageId, MessageContents.AuthFailed),
-                    client._messageCounter++
-                );
-
-                await Task.Delay(client._confirmationTimeout);
-
-                if (client._awaitedMessages.Contains(messageId))
-                    return null;
-            }
-            
-            return client;
-        }
-        
-        return client;
     }
 
     public async Task MainLoopAsync()
@@ -78,13 +50,13 @@ public class UdpClientServer
                 case MessageType.AUTH:
                     var (authMessageId, authUsername, authDisplayName, authSecret) = UdpMessageParser.ParseAuthMessage(message);
 
-                    Task.Run(() => Auth(authMessageId, authUsername, authDisplayName, authSecret));
+                    Task.Run(() => AuthRecurrent(authMessageId, authUsername, authDisplayName, authSecret));
                     break;
             }
         }
     }
 
-    private async Task AuthRecurrent(ushort messageId, string username, string displayName, string secret)
+    public async Task Auth(ushort messageId, string username, string displayName, string secret)
     {
         _receivedMessages.Enqueue(messageId);
 
@@ -101,12 +73,11 @@ public class UdpClientServer
             UdpMessageGenerator.GenerateReplyMessage(_messageCounter, true, messageId, MessageContents.AuthSuccess),
             _messageCounter++
         );
-        await JoinARoom();
+        await JoinARoom(displayName);
         _fsmState = FsmState.Open;
-
     }
-
-    private async Task Auth(ushort messageId, string username, string displayName, string secret)
+    
+    private async Task AuthRecurrent(ushort messageId, string username, string displayName, string secret)
     {
         if (_fsmState is not FsmState.Auth)
         {
@@ -118,26 +89,11 @@ public class UdpClientServer
 
         if (!IsItNewMessage(messageId))
             return;
-        _receivedMessages.Enqueue(messageId);
-
-        if (!_authDataChecker.CheckAuthData(username, secret))
-        {
-            await SendAndAwaitConfirmResponse(
-                UdpMessageGenerator.GenerateReplyMessage(_messageCounter, false, messageId, MessageContents.AuthFailed),
-                _messageCounter++
-            );
-            return;
-        }
         
-        await SendAndAwaitConfirmResponse(
-            UdpMessageGenerator.GenerateReplyMessage(_messageCounter, true, messageId, MessageContents.AuthSuccess),
-            _messageCounter++
-        );
-        await JoinARoom();
-        _fsmState = FsmState.Open;
+        await Auth(messageId, username, displayName, secret);
     }
 
-    private async Task JoinARoom()
+    private async Task JoinARoom(string displayName, string roomName = "default_room")
     {
         
     }

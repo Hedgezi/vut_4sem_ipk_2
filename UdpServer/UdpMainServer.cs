@@ -2,12 +2,11 @@ using System.Net;
 using System.Net.Sockets;
 using vut_ipk2.Common.Auth;
 using vut_ipk2.Common.Enums;
-using vut_ipk2.Common.Interfaces;
 using vut_ipk2.UdpServer.Messages;
 
 namespace vut_ipk2.UdpServer;
 
-public class UdpMainServer : IConnection
+public class UdpMainServer
 {
     private readonly IPAddress _ip;
     private readonly int _port;
@@ -19,8 +18,9 @@ public class UdpMainServer : IConnection
     private readonly List<UdpClientServer> _clients = new();
 
     private readonly UdpClient _client;
-    
-    public UdpMainServer(IPAddress ip, int port, int confirmationTimeout, int maxRetransmissions, AuthDataChecker authDataChecker)
+
+    public UdpMainServer(IPAddress ip, int port, int confirmationTimeout, int maxRetransmissions,
+        AuthDataChecker authDataChecker)
     {
         _ip = ip;
         _port = port;
@@ -30,41 +30,33 @@ public class UdpMainServer : IConnection
 
         _client = new UdpClient(new IPEndPoint(_ip, _port));
     }
-    
+
     public async Task AcceptNewUserLoopAsync()
     {
         while (true)
         {
             try
             {
-                UdpReceiveResult result = await _client.ReceiveAsync();
+                var result = await _client.ReceiveAsync();
 
                 if (result.Buffer[0] != (byte)MessageType.AUTH)
                 {
                     continue;
                 }
-                
+
                 var (messageId, username, displayName, secret) = UdpMessageParser.ParseAuthMessage(result.Buffer);
                 await _client.SendAsync(UdpMessageGenerator.GenerateConfirmMessage(messageId));
 
-                Task.Run(async () => {
-                    var newClient = await UdpClientServer.CreateNewConnectionAfterAuth(
-                        result.RemoteEndPoint.Address,
-                        _confirmationTimeout,
-                        _maxRetransmissions,
-                        _authDataChecker,
-                        messageId,
-                        username,
-                        displayName,
-                        secret
-                    );
-                    
-                    if (newClient == null)
-                        return;
-                
-                    _clients.Add(newClient);
-                    Task.Run(() => newClient.MainLoopAsync());
-                });
+                var newClient = new UdpClientServer(
+                    result.RemoteEndPoint.Address,
+                    _confirmationTimeout,
+                    _maxRetransmissions,
+                    _authDataChecker
+                );
+
+                _clients.Add(newClient);
+                Task.Run(() => newClient.MainLoopAsync());
+                Task.Run(() => newClient.Auth(messageId, username, displayName, secret));
             }
             catch (Exception e)
             {
