@@ -17,12 +17,13 @@ public static class UdpMessageParser
         return (messageId, username, displayName, secret);
     }
     
-    public static (ushort messageId, string channelName) ParseJoinMessage(byte[] message)
+    public static (ushort messageId, string channelName, string displayName) ParseJoinMessage(byte[] message)
     {
         var messageId = BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3]);
         var channelName = ConvertAsciiBytesToString(message, 3);
-
-        return (messageId, channelName);
+        var displayName = ConvertAsciiBytesToString(message, 3 + channelName.Length);
+        
+        return (messageId, channelName, displayName);
     }
 
     public static (ushort messageId, string displayName, string messageContents) ParseMsgMessage(byte[] message)

@@ -24,16 +24,17 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     private readonly FixedSizeQueue<ushort> _receivedMessages = new(200); // remember received messages for deduplication
 
     private readonly UdpClient _client;
-    private Room? _currentRoom;
+    private Room _currentRoom;
 
     public UdpClientServer(IPAddress ip, int confirmationTimeout, int maxRetransmissions,
-        AuthDataChecker authDataChecker)
+        AuthDataChecker authDataChecker, IPEndPoint remoteEndPoint)
     {
         _confirmationTimeout = confirmationTimeout;
         _maxRetransmissions = maxRetransmissions;
         _authDataChecker = authDataChecker;
 
-        _client = new UdpClient(new IPEndPoint(ip, 0)); // TODO: Set port
+        _client = new UdpClient(new IPEndPoint(ip, 0));
+        _client.Connect(remoteEndPoint);
     }
 
     public async Task MainLoopAsync()
@@ -53,6 +54,16 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
                     var (authMessageId, authUsername, authDisplayName, authSecret) = UdpMessageParser.ParseAuthMessage(message);
 
                     Task.Run(() => AuthRecurrent(authMessageId, authUsername, authDisplayName, authSecret));
+                    break;
+                case MessageType.JOIN:
+                    var (joinMessageId, joinRoomName, joinDisplayName) = UdpMessageParser.ParseJoinMessage(message);
+                    
+                    Task.Run(() => Join(joinMessageId, joinDisplayName, joinRoomName));
+                    break;
+                case MessageType.MSG:
+                    var (msgMessageId, msgDisplayName, msgMessage) = UdpMessageParser.ParseMsgMessage(message);
+                    
+                    Task.Run(() => Msg(msgMessageId, msgDisplayName, msgMessage));
                     break;
             }
         }
@@ -88,18 +99,63 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     
     private async Task AuthRecurrent(ushort messageId, string username, string displayName, string secret)
     {
+        await SendConfirmMessage(messageId);
+        
+        if (!IsItNewMessage(messageId))
+            return;
+
         if (_fsmState is not FsmState.Auth)
         {
             // TODO: Send error msg 
             return;
         }
+        
+        await Auth(messageId, username, displayName, secret);
+    }
 
+    private async Task Join(ushort messageId, string displayName, string roomName)
+    {
         await SendConfirmMessage(messageId);
 
         if (!IsItNewMessage(messageId))
             return;
+        _receivedMessages.Enqueue(messageId);
+
+        if (_fsmState is not FsmState.Open)
+        {
+            // TODO
+            return;
+        }
+
+        await _currentRoom.UnsubscribeAsync(this);
+        await _currentRoom.NotifyAsync(this, new MessageInfo(
+            "Server",
+            MessageBuilder.GenerateLeftRoomMessage(displayName, _currentRoom.Name)
+        ));
         
-        await Auth(messageId, username, displayName, secret);
+        await JoinARoom(displayName, roomName);
+        
+        await SendAndAwaitConfirmResponse(
+            UdpMessageGenerator.GenerateReplyMessage(_messageCounter, true, messageId, MessageContents.JoinSuccess),
+            _messageCounter++
+        );
+    }
+
+    private async Task Msg(ushort messageId, string displayName, string message)
+    {
+        await SendConfirmMessage(messageId);
+        
+        if (!IsItNewMessage(messageId))
+            return;
+        _receivedMessages.Enqueue(messageId);
+
+        if (_fsmState is not FsmState.Open)
+        {
+            // TODO: Send error msg 
+            return;
+        }
+        
+        await _currentRoom.NotifyAsync(this, new MessageInfo(displayName, message));
     }
 
     private async Task JoinARoom(string displayName, string roomName = "default_room")
@@ -109,7 +165,10 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         await room.SubscribeAsync(this);
         _currentRoom = room;
 
-        await room.NotifyAsync();
+        await room.NotifyAsync(this, new MessageInfo(
+            "Server",
+            MessageBuilder.GenerateJoinRoomMessage(displayName, roomName)
+        ));
     }
 
     private async Task SendAndAwaitConfirmResponse(byte[] message, ushort messageId)

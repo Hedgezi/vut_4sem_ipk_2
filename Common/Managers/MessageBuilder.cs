@@ -1,6 +1,6 @@
 namespace vut_ipk2.Common.Managers;
 
-public static class MessageBuilders
+public static class MessageBuilder
 {
     public static string GenerateJoinRoomMessage(string displayName, string channelName)
         => $"{displayName} has joined {channelName}";
