@@ -3,13 +3,15 @@ using System.Net;
 using System.Net.Sockets;
 using vut_ipk2.Common.Auth;
 using vut_ipk2.Common.Enums;
+using vut_ipk2.Common.Interfaces;
+using vut_ipk2.Common.Managers;
 using vut_ipk2.Common.Models;
 using vut_ipk2.Common.Structures;
 using vut_ipk2.UdpServer.Messages;
 
 namespace vut_ipk2.UdpServer;
 
-public class UdpClientServer
+public class UdpClientServer : IAsyncObserver<MessageInfo>
 {
     private readonly int _confirmationTimeout;
     private readonly int _maxRetransmissions;
@@ -55,6 +57,13 @@ public class UdpClientServer
             }
         }
     }
+    
+    public async Task OnNextAsync(MessageInfo value)
+    {
+        var message = UdpMessageGenerator.GenerateMsgMessage(_messageCounter, value.From, value.Message);
+        
+        await SendAndAwaitConfirmResponse(message, _messageCounter++);
+    }
 
     public async Task Auth(ushort messageId, string username, string displayName, string secret)
     {
@@ -95,7 +104,12 @@ public class UdpClientServer
 
     private async Task JoinARoom(string displayName, string roomName = "default_room")
     {
-        
+        var room = RoomManager.GetRoom(roomName);
+
+        await room.SubscribeAsync(this);
+        _currentRoom = room;
+
+        await room.NotifyAsync();
     }
 
     private async Task SendAndAwaitConfirmResponse(byte[] message, ushort messageId)
