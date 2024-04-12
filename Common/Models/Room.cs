@@ -31,7 +31,7 @@ public class Room : IAsyncObservable<MessageInfo>
     {
         foreach (var observer in _observers)
         {
-            if (observer == observerWhoSend)
+            if (observer == observerWhoSend && value.From != "Server")
                 continue;
             
             Task.Run(() => observer.OnNextAsync(value));

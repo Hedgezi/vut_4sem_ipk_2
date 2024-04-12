@@ -52,6 +52,7 @@ public class UdpMainServer
                     result.RemoteEndPoint.Address,
                     _confirmationTimeout,
                     _maxRetransmissions,
+                    this,
                     _authDataChecker,
                     result.RemoteEndPoint
                 );
@@ -66,5 +67,10 @@ public class UdpMainServer
                 throw;
             }
         }
+    }
+    
+    public void RemoveClient(UdpClientServer client)
+    {
+        _clients.Remove(client);
     }
 }

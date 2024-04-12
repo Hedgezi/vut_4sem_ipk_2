@@ -15,22 +15,26 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
 {
     private readonly int _confirmationTimeout;
     private readonly int _maxRetransmissions;
+    private readonly UdpMainServer _mainServer;
     private readonly AuthDataChecker _authDataChecker;
 
     private ushort _messageCounter;
     private FsmState _fsmState = FsmState.Auth;
+    private Room _currentRoom;
+    private string _lastUsedDisplayName;
 
     private readonly FixedSizeQueue<ushort> _awaitedMessages = new(200); // all CONFIRM messages go here
-    private readonly FixedSizeQueue<ushort> _receivedMessages = new(200); // remember received messages for deduplication
+    private readonly FixedSizeQueue<ushort>
+        _receivedMessages = new(200); // remember received messages for deduplication
 
     private readonly UdpClient _client;
-    private Room _currentRoom;
 
-    public UdpClientServer(IPAddress ip, int confirmationTimeout, int maxRetransmissions,
+    public UdpClientServer(IPAddress ip, int confirmationTimeout, int maxRetransmissions, UdpMainServer mainServer,
         AuthDataChecker authDataChecker, IPEndPoint remoteEndPoint)
     {
         _confirmationTimeout = confirmationTimeout;
         _maxRetransmissions = maxRetransmissions;
+        _mainServer = mainServer;
         _authDataChecker = authDataChecker;
 
         _client = new UdpClient(new IPEndPoint(ip, 0));
@@ -44,36 +48,64 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
             var result = await _client.ReceiveAsync();
             var message = result.Buffer;
 
-            switch ((MessageType)message[0])
+            try
             {
-                case MessageType.CONFIRM:
-                    _awaitedMessages.Enqueue(BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3]));
+                switch ((MessageType)message[0])
+                {
+                    case MessageType.CONFIRM:
+                        _awaitedMessages.Enqueue(BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3]));
 
-                    break;
-                case MessageType.AUTH:
-                    var (authMessageId, authUsername, authDisplayName, authSecret) = UdpMessageParser.ParseAuthMessage(message);
+                        break;
+                    case MessageType.AUTH:
+                        var (authMessageId, authUsername, authDisplayName, authSecret) =
+                            UdpMessageParser.ParseAuthMessage(message);
 
-                    Task.Run(() => AuthRecurrent(authMessageId, authUsername, authDisplayName, authSecret));
-                    break;
-                case MessageType.JOIN:
-                    var (joinMessageId, joinRoomName, joinDisplayName) = UdpMessageParser.ParseJoinMessage(message);
-                    
-                    Task.Run(() => Join(joinMessageId, joinDisplayName, joinRoomName));
-                    break;
-                case MessageType.MSG:
-                    var (msgMessageId, msgDisplayName, msgMessage) = UdpMessageParser.ParseMsgMessage(message);
-                    
-                    Task.Run(() => Msg(msgMessageId, msgDisplayName, msgMessage));
-                    break;
+                        Task.Run(() => AuthRecurrent(authMessageId, authUsername, authDisplayName, authSecret));
+                        break;
+                    case MessageType.JOIN:
+                        var (joinMessageId, joinRoomName, joinDisplayName) =
+                            UdpMessageParser.ParseJoinMessage(message);
+
+                        Task.Run(() => Join(joinMessageId, joinDisplayName, joinRoomName));
+                        break;
+                    case MessageType.MSG:
+                        var (msgMessageId, msgDisplayName, msgMessage) = UdpMessageParser.ParseMsgMessage(message);
+
+                        Task.Run(() => Msg(msgMessageId, msgDisplayName, msgMessage));
+                        break;
+                    case MessageType.ERR:
+                        var (errMessageId, errDisplayName, errMessageContents) =
+                            UdpMessageParser.ParseMsgMessage(message); // ERR and MSG have the same structure
+
+                        await Err(errMessageId, errDisplayName, errMessageContents);
+                        return;
+                    case MessageType.BYE:
+                        var byeMessageId = BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3]);
+
+                        await Bye(byeMessageId);
+                        return;
+                    default:
+                        await ClientError(BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3]));
+                        return;
+                }
+            }
+            catch (Exception e)
+            {
+                if (message.Length > 2)
+                    await SendConfirmMessage(BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3]));
+
+                await ClientError(BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3]));
+                return;
             }
         }
     }
-    
+
     public async Task OnNextAsync(MessageInfo value)
     {
-        var message = UdpMessageGenerator.GenerateMsgMessage(_messageCounter, value.From, value.Message);
-        
-        await SendAndAwaitConfirmResponse(message, _messageCounter++);
+        await SendAndAwaitConfirmResponse(
+            UdpMessageGenerator.GenerateMsgMessage(_messageCounter, value.From, value.Message),
+            _messageCounter++
+        );
     }
 
     public async Task Auth(ushort messageId, string username, string displayName, string secret)
@@ -88,19 +120,20 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
             );
             return;
         }
-        
+
         await SendAndAwaitConfirmResponse(
             UdpMessageGenerator.GenerateReplyMessage(_messageCounter, true, messageId, MessageContents.AuthSuccess),
             _messageCounter++
         );
         await JoinARoom(displayName);
+        _lastUsedDisplayName = displayName;
         _fsmState = FsmState.Open;
     }
-    
+
     private async Task AuthRecurrent(ushort messageId, string username, string displayName, string secret)
     {
         await SendConfirmMessage(messageId);
-        
+
         if (!IsItNewMessage(messageId))
             return;
 
@@ -109,7 +142,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
             // TODO: Send error msg 
             return;
         }
-        
+
         await Auth(messageId, username, displayName, secret);
     }
 
@@ -132,30 +165,15 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
             "Server",
             MessageBuilder.GenerateLeftRoomMessage(displayName, _currentRoom.Name)
         ));
-        
+
         await JoinARoom(displayName, roomName);
-        
+
         await SendAndAwaitConfirmResponse(
             UdpMessageGenerator.GenerateReplyMessage(_messageCounter, true, messageId, MessageContents.JoinSuccess),
             _messageCounter++
         );
-    }
 
-    private async Task Msg(ushort messageId, string displayName, string message)
-    {
-        await SendConfirmMessage(messageId);
-        
-        if (!IsItNewMessage(messageId))
-            return;
-        _receivedMessages.Enqueue(messageId);
-
-        if (_fsmState is not FsmState.Open)
-        {
-            // TODO: Send error msg 
-            return;
-        }
-        
-        await _currentRoom.NotifyAsync(this, new MessageInfo(displayName, message));
+        _lastUsedDisplayName = displayName;
     }
 
     private async Task JoinARoom(string displayName, string roomName = "default_room")
@@ -169,6 +187,90 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
             "Server",
             MessageBuilder.GenerateJoinRoomMessage(displayName, roomName)
         ));
+    }
+
+    private async Task Msg(ushort messageId, string displayName, string message)
+    {
+        await SendConfirmMessage(messageId);
+
+        if (!IsItNewMessage(messageId))
+            return;
+        _receivedMessages.Enqueue(messageId);
+
+        if (_fsmState is not FsmState.Open)
+        {
+            // TODO: Send error msg 
+            return;
+        }
+
+        await _currentRoom.NotifyAsync(this, new MessageInfo(displayName, message));
+
+        _lastUsedDisplayName = displayName;
+    }
+
+    private async Task Err(ushort messageId, string displayName, string message)
+    {
+        await SendConfirmMessage(messageId);
+
+        if (!IsItNewMessage(messageId))
+            return;
+        _receivedMessages.Enqueue(messageId);
+
+        await SendAndAwaitConfirmResponse(
+            UdpMessageGenerator.GenerateByeMessage(_messageCounter),
+            _messageCounter++
+        );
+
+        _lastUsedDisplayName = displayName;
+
+        await EndClientServerConnection();
+    }
+
+    private async Task Bye(ushort messageId)
+    {
+        await SendConfirmMessage(messageId);
+
+        if (!IsItNewMessage(messageId))
+            return;
+        _receivedMessages.Enqueue(messageId);
+
+        await EndClientServerConnection();
+    }
+
+    private async Task ClientError(ushort messageId)
+    {
+        await SendConfirmMessage(messageId);
+
+        if (!IsItNewMessage(messageId))
+            return;
+        _receivedMessages.Enqueue(messageId);
+
+        await SendAndAwaitConfirmResponse(
+            UdpMessageGenerator.GenerateErrMessage(_messageCounter, "Server", MessageContents.ClientError),
+            _messageCounter++
+        );
+
+        await SendAndAwaitConfirmResponse(
+            UdpMessageGenerator.GenerateByeMessage(_messageCounter),
+            _messageCounter++
+        );
+
+        await EndClientServerConnection();
+    }
+
+    private async Task EndClientServerConnection()
+    {
+        await _currentRoom.UnsubscribeAsync(this);
+        await _currentRoom.NotifyAsync(this, new MessageInfo(
+            "Server",
+            MessageBuilder.GenerateLeftRoomMessage(_lastUsedDisplayName, _currentRoom.Name)
+        ));
+
+        _client.Close();
+        _client.Dispose();
+
+        _mainServer.RemoveClient(this);
+        _fsmState = FsmState.End;
     }
 
     private async Task SendAndAwaitConfirmResponse(byte[] message, ushort messageId)
