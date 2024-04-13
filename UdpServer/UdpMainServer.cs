@@ -13,21 +13,18 @@ public class UdpMainServer
     private readonly int _port;
     private readonly int _confirmationTimeout;
     private readonly int _maxRetransmissions;
-    private readonly AuthDataChecker _authDataChecker;
 
     private FsmState _fsmState = FsmState.Accept;
     private readonly List<UdpClientServer> _clients = new();
 
     private readonly UdpClient _client;
 
-    public UdpMainServer(IPAddress ip, int port, int confirmationTimeout, int maxRetransmissions,
-        AuthDataChecker authDataChecker)
+    public UdpMainServer(IPAddress ip, int port, int confirmationTimeout, int maxRetransmissions)
     {
         _ip = ip;
         _port = port;
         _confirmationTimeout = confirmationTimeout;
         _maxRetransmissions = maxRetransmissions;
-        _authDataChecker = authDataChecker;
 
         _client = new UdpClient(new IPEndPoint(_ip, _port));
     }
@@ -53,7 +50,6 @@ public class UdpMainServer
                     _confirmationTimeout,
                     _maxRetransmissions,
                     this,
-                    _authDataChecker,
                     result.RemoteEndPoint
                 );
 
@@ -61,10 +57,9 @@ public class UdpMainServer
                 Task.Run(() => newClient.MainLoopAsync());
                 Task.Run(() => newClient.Auth(messageId, username, displayName, secret));
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                Console.WriteLine(e.Message);
-                throw;
+                continue;
             }
         }
     }

@@ -16,12 +16,12 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     private readonly int _confirmationTimeout;
     private readonly int _maxRetransmissions;
     private readonly UdpMainServer _mainServer;
-    private readonly AuthDataChecker _authDataChecker;
 
     private ushort _messageCounter;
     private FsmState _fsmState = FsmState.Auth;
     private Room _currentRoom;
     private string _lastUsedDisplayName;
+    private string _username;
 
     private readonly FixedSizeQueue<ushort> _awaitedMessages = new(200); // all CONFIRM messages go here
     private readonly FixedSizeQueue<ushort>
@@ -30,12 +30,11 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     private readonly UdpClient _client;
 
     public UdpClientServer(IPAddress ip, int confirmationTimeout, int maxRetransmissions, UdpMainServer mainServer,
-        AuthDataChecker authDataChecker, IPEndPoint remoteEndPoint)
+        IPEndPoint remoteEndPoint)
     {
         _confirmationTimeout = confirmationTimeout;
         _maxRetransmissions = maxRetransmissions;
         _mainServer = mainServer;
-        _authDataChecker = authDataChecker;
 
         _client = new UdpClient(new IPEndPoint(ip, 0));
         _client.Connect(remoteEndPoint);
@@ -89,12 +88,17 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
                         return;
                 }
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                if (message.Length > 2)
-                    await SendConfirmMessage(BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3]));
+                ushort messageId = 0;
 
-                await ClientError(BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3]));
+                if (message.Length > 2)
+                {
+                    messageId = BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3]);
+                    await SendConfirmMessage(messageId);
+                }
+
+                await ClientError(messageId);
                 return;
             }
         }
@@ -112,7 +116,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     {
         _receivedMessages.Enqueue(messageId);
 
-        if (!_authDataChecker.CheckAuthData(username, secret))
+        if (!AuthDataChecker.CheckAuthData(username, secret))
         {
             await SendAndAwaitConfirmResponse(
                 UdpMessageGenerator.GenerateReplyMessage(_messageCounter, false, messageId, MessageContents.AuthFailed),
@@ -127,6 +131,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         );
         await JoinARoom(displayName);
         _lastUsedDisplayName = displayName;
+        _username = username;
         _fsmState = FsmState.Open;
     }
 
@@ -269,6 +274,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         _client.Close();
         _client.Dispose();
 
+        AuthDataChecker.UnLogin(_username);
         _mainServer.RemoveClient(this);
         _fsmState = FsmState.End;
     }

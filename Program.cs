@@ -13,14 +13,11 @@ class Program
         Parser.Default.ParseArguments<CommandLineOptions>(args)
             .WithParsed(o => options = o);
         
-        var authChecker = new AuthDataChecker();
-
         var udpServer = new UdpMainServer(
             IPAddress.Parse(options.ServerHostname),
             options.ServerPort,
             options.Timeout,
-            options.Retransmissions,
-            authChecker
+            options.Retransmissions
         );
         
         var udpServerMainLoopTask = udpServer.AcceptNewUserLoopAsync();
