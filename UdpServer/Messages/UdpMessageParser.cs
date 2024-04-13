@@ -48,7 +48,6 @@ public static class UdpMessageParser
     {
         var shortByteArray = bytes[startIndex] == 0x00 ? bytes[++startIndex..] : bytes[startIndex..];
         var length = Array.IndexOf(shortByteArray, (byte)0x00);
-        length = length == -1 ? shortByteArray.Length - 1 : length + 1;
 
         return TextEncoding.GetString(shortByteArray, 0, length).Trim('\0');
     }

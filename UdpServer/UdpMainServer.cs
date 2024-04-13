@@ -1,8 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
-using vut_ipk2.Common.Auth;
 using vut_ipk2.Common.Enums;
-using vut_ipk2.Common.Managers;
 using vut_ipk2.UdpServer.Messages;
 
 namespace vut_ipk2.UdpServer;
@@ -14,7 +12,6 @@ public class UdpMainServer
     private readonly int _confirmationTimeout;
     private readonly int _maxRetransmissions;
 
-    private FsmState _fsmState = FsmState.Accept;
     private readonly List<UdpClientServer> _clients = new();
 
     private readonly UdpClient _client;
