@@ -22,6 +22,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     private Room _currentRoom;
     private string _lastUsedDisplayName;
     private string _username;
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     private readonly FixedSizeQueue<ushort> _awaitedMessages = new(200); // all CONFIRM messages go here
     private readonly FixedSizeQueue<ushort>
@@ -44,8 +45,11 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     {
         while (true)
         {
-            var result = await _client.ReceiveAsync();
+            var result = await _client.ReceiveAsync(_cancellationTokenSource.Token);
             var message = result.Buffer;
+
+            if (_cancellationTokenSource.Token.IsCancellationRequested)
+                return;
 
             try
             {
@@ -90,13 +94,9 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
             }
             catch (Exception)
             {
-                ushort messageId = 0;
-
-                if (message.Length > 2)
-                {
-                    messageId = BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3]);
-                    await SendConfirmMessage(messageId);
-                }
+                var messageId = message.Length > 2
+                    ? BinaryPrimitives.ReadUInt16BigEndian(message.AsSpan()[1..3])
+                    : (ushort)0;
 
                 await ClientError(messageId);
                 return;
@@ -111,6 +111,8 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
             _messageCounter++
         );
     }
+
+    /* AUTH */
 
     public async Task Auth(ushort messageId, string username, string displayName, string secret)
     {
@@ -137,33 +139,35 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
 
     private async Task AuthRecurrent(ushort messageId, string username, string displayName, string secret)
     {
+        if (_fsmState is not FsmState.Auth)
+        {
+            await ClientError(messageId);
+            return;
+        }
+
         await SendConfirmMessage(messageId);
 
         if (!IsItNewMessage(messageId))
             return;
 
-        if (_fsmState is not FsmState.Auth)
-        {
-            // TODO: Send error msg 
-            return;
-        }
-
         await Auth(messageId, username, displayName, secret);
     }
 
+    /* JOIN */
+
     private async Task Join(ushort messageId, string displayName, string roomName)
     {
+        if (_fsmState is not FsmState.Open)
+        {
+            await ClientError(messageId);
+            return;
+        }
+
         await SendConfirmMessage(messageId);
 
         if (!IsItNewMessage(messageId))
             return;
         _receivedMessages.Enqueue(messageId);
-
-        if (_fsmState is not FsmState.Open)
-        {
-            // TODO
-            return;
-        }
 
         await _currentRoom.UnsubscribeAsync(this);
         await _currentRoom.NotifyAsync(this, new MessageInfo(
@@ -194,24 +198,28 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         ));
     }
 
+    /* MSG */
+
     private async Task Msg(ushort messageId, string displayName, string message)
     {
+        if (_fsmState is not FsmState.Open)
+        {
+            await ClientError(messageId);
+            return;
+        }
+
         await SendConfirmMessage(messageId);
 
         if (!IsItNewMessage(messageId))
             return;
         _receivedMessages.Enqueue(messageId);
 
-        if (_fsmState is not FsmState.Open)
-        {
-            // TODO: Send error msg 
-            return;
-        }
-
         await _currentRoom.NotifyAsync(this, new MessageInfo(displayName, message));
 
         _lastUsedDisplayName = displayName;
     }
+
+    /* CLIENT SHUTDOWN */
 
     private async Task Err(ushort messageId, string displayName, string message)
     {
@@ -250,17 +258,24 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
             return;
         _receivedMessages.Enqueue(messageId);
 
+        await SendClientError();
+
+        await EndClientServerConnection();
+    }
+
+    private async Task SendClientError()
+    {
         await SendAndAwaitConfirmResponse(
             UdpMessageGenerator.GenerateErrMessage(_messageCounter, "Server", MessageContents.ClientError),
-            _messageCounter++
+            _messageCounter++,
+            true
         );
 
         await SendAndAwaitConfirmResponse(
             UdpMessageGenerator.GenerateByeMessage(_messageCounter),
-            _messageCounter++
+            _messageCounter++,
+            true
         );
-
-        await EndClientServerConnection();
     }
 
     private async Task EndClientServerConnection()
@@ -277,9 +292,13 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         AuthDataChecker.UnLogin(_username);
         _mainServer.RemoveClient(this);
         _fsmState = FsmState.End;
+
+        await _cancellationTokenSource.CancelAsync();
     }
 
-    private async Task SendAndAwaitConfirmResponse(byte[] message, ushort messageId)
+    /* HELPERS */
+
+    private async Task SendAndAwaitConfirmResponse(byte[] message, ushort messageId, bool isClientError = false)
     {
         for (var i = 0; i < 1 + _maxRetransmissions; i++)
         {
@@ -291,8 +310,10 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
                 return;
         }
 
-        // TODO: Handle timeout
-        // Environment.Exit(1);
+        if (isClientError)
+            await SendClientError();
+
+        await EndClientServerConnection();
     }
 
     private async Task SendConfirmMessage(ushort messageId)
