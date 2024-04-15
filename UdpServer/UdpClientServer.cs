@@ -15,6 +15,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
 {
     private readonly int _confirmationTimeout;
     private readonly int _maxRetransmissions;
+    private readonly IPEndPoint _remoteEndPoint;
     private readonly UdpMainServer _mainServer;
 
     private ushort _messageCounter;
@@ -35,6 +36,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     {
         _confirmationTimeout = confirmationTimeout;
         _maxRetransmissions = maxRetransmissions;
+        _remoteEndPoint = remoteEndPoint;
         _mainServer = mainServer;
 
         _client = new UdpClient(new IPEndPoint(ip, 0));
@@ -53,6 +55,8 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
 
             try
             {
+                await Console.Out.WriteLineAsync($"RECV {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {((MessageType)message[0]).ToString()}");
+                
                 switch ((MessageType)message[0])
                 {
                     case MessageType.CONFIRM:
@@ -303,6 +307,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         for (var i = 0; i < 1 + _maxRetransmissions; i++)
         {
             await _client.SendAsync(message, message.Length);
+            await Console.Out.WriteLineAsync($"SENT {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {((MessageType)message[0]).ToString()}");
 
             await Task.Delay(_confirmationTimeout);
 
@@ -321,6 +326,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         var confirmMessage = UdpMessageGenerator.GenerateConfirmMessage(messageId);
 
         await _client.SendAsync(confirmMessage, confirmMessage.Length);
+        await Console.Out.WriteLineAsync($"SENT {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | CONFIRM");
     }
 
     private bool IsItNewMessage(ushort messageId)

@@ -40,7 +40,10 @@ public class UdpMainServer
                 }
 
                 var (messageId, username, displayName, secret) = UdpMessageParser.ParseAuthMessage(result.Buffer);
+                await Console.Out.WriteLineAsync($"RECV {result.RemoteEndPoint.Address}:{result.RemoteEndPoint.Port} | AUTH");
+
                 await _client.SendAsync(UdpMessageGenerator.GenerateConfirmMessage(messageId), result.RemoteEndPoint);
+                await Console.Out.WriteLineAsync($"SENT {result.RemoteEndPoint.Address}:{result.RemoteEndPoint.Port} | CONFIRM");
 
                 var newClient = new UdpClientServer(
                     result.RemoteEndPoint.Address,
