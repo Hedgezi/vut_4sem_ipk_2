@@ -1,6 +1,6 @@
 ﻿using System.Net;
 using CommandLine;
-using vut_ipk2.Common.Auth;
+using vut_ipk2.TcpServer;
 using vut_ipk2.UdpServer;
 
 namespace vut_ipk2;
@@ -20,8 +20,14 @@ class Program
             options.Retransmissions
         );
         
+        var tcpServer = new TcpMainServer(
+            IPAddress.Parse(options.ServerHostname),
+            options.ServerPort
+        );
+        
         var udpServerMainLoopTask = udpServer.AcceptNewUserLoopAsync();
+        var tcpServerMainLoopTask = tcpServer.AcceptNewUserLoopAsync();
 
-        await Task.WhenAny(udpServerMainLoopTask);
+        await Task.WhenAny(udpServerMainLoopTask, tcpServerMainLoopTask);
     }
 }
