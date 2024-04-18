@@ -46,7 +46,7 @@ public class UdpMainServer
                 await Console.Out.WriteLineAsync($"SENT {result.RemoteEndPoint.Address}:{result.RemoteEndPoint.Port} | CONFIRM");
 
                 var newClient = new UdpClientServer(
-                    result.RemoteEndPoint.Address,
+                    _ip,
                     _confirmationTimeout,
                     _maxRetransmissions,
                     this,

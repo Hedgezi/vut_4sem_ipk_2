@@ -284,6 +284,9 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
 
     private async Task EndClientServerConnection()
     {
+        if (!_client.Client.Connected)
+            return;
+        
         await _currentRoom.UnsubscribeAsync(this);
         await _currentRoom.NotifyAsync(this, new MessageInfo(
             "Server",
