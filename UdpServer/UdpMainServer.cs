@@ -8,7 +8,6 @@ namespace vut_ipk2.UdpServer;
 public class UdpMainServer
 {
     private readonly IPAddress _ip;
-    private readonly int _port;
     private readonly int _confirmationTimeout;
     private readonly int _maxRetransmissions;
 
@@ -20,11 +19,10 @@ public class UdpMainServer
     public UdpMainServer(IPAddress ip, int port, int confirmationTimeout, int maxRetransmissions)
     {
         _ip = ip;
-        _port = port;
         _confirmationTimeout = confirmationTimeout;
         _maxRetransmissions = maxRetransmissions;
 
-        _client = new UdpClient(new IPEndPoint(_ip, _port));
+        _client = new UdpClient(new IPEndPoint(_ip, port));
     }
 
     public async Task AcceptNewUserLoopAsync()
@@ -65,7 +63,6 @@ public class UdpMainServer
             }
             catch (Exception)
             {
-                continue;
             }
         }
     }

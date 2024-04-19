@@ -8,9 +8,6 @@ namespace vut_ipk2.TcpServer;
 
 public class TcpMainServer
 {
-    private readonly IPAddress _ip;
-    private readonly int _port;
-
     private readonly List<TcpClientServer> _clients = new();
 
     private readonly TcpListener _listener;
@@ -18,10 +15,7 @@ public class TcpMainServer
 
     public TcpMainServer(IPAddress ip, int port)
     {
-        _ip = ip;
-        _port = port;
-
-        _listener = new TcpListener(new IPEndPoint(_ip, _port));
+        _listener = new TcpListener(new IPEndPoint(ip, port));
     }
 
     public async Task AcceptNewUserLoopAsync()
@@ -35,34 +29,28 @@ public class TcpMainServer
                 var client = await _listener.AcceptTcpClientAsync();
 
                 var tcpMessageReceiver = new TcpMessageReceiver();
-                var receivedMessage = await tcpMessageReceiver.ReceiveMessageAsync(client, _cancellationTokenSource.Token);
-                
+                var receivedMessage =
+                    await tcpMessageReceiver.ReceiveMessageAsync(client, _cancellationTokenSource.Token);
+
                 if (_cancellationTokenSource.Token.IsCancellationRequested)
                     return;
 
                 if (TcpMessageParser.ParseMessageType(receivedMessage) != MessageType.AUTH)
                     continue;
 
-                string username, displayName, secret;
+
+                var (username, displayName, secret) = TcpMessageParser.ParseAuthMessage(receivedMessage);
                 
-                try
-                {
-                    (username, displayName, secret) = TcpMessageParser.ParseAuthMessage(receivedMessage);
-                    var endPoint = (IPEndPoint)client.Client.RemoteEndPoint!;
-                    await Console.Out.WriteLineAsync(
-                        $"RECV {endPoint.Address}:{endPoint.Port} | AUTH"
-                    );
-                }
-                catch (Exception)
-                {
-                    continue;
-                }
+                var endPoint = (IPEndPoint)client.Client.RemoteEndPoint!;
+                await Console.Out.WriteLineAsync(
+                    $"RECV {endPoint.Address}:{endPoint.Port} | AUTH"
+                );
 
                 var newClient = new TcpClientServer(
                     client,
                     tcpMessageReceiver,
                     this,
-                    (IPEndPoint)client.Client.RemoteEndPoint!
+                    endPoint
                 );
 
                 _clients.Add(newClient);
@@ -74,7 +62,7 @@ public class TcpMainServer
             }
         }
     }
-    
+
     public void RemoveClient(TcpClientServer client)
     {
         _clients.Remove(client);
