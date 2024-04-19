@@ -8,9 +8,7 @@ public static class TcpMessageGenerator
     
     public static byte[] GenerateReplyMessage(bool result, string contents)
     {
-        var resultString = result ? "OK" : "NOK";
-        
-        return TextEncoding.GetBytes($"REPLY {resultString} IS {contents}\r\n");
+        return TextEncoding.GetBytes($"REPLY {(result ? "OK" : "NOK")} IS {contents}\r\n");
     }
     
     public static byte[] GenerateMsgMessage(string displayName, string contents)

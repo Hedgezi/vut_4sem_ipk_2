@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
-using vut_ipk2.Common.Auth;
 using vut_ipk2.Common.Enums;
 using vut_ipk2.Common.Interfaces;
 using vut_ipk2.Common.Managers;
@@ -122,7 +121,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     {
         _receivedMessages.Enqueue(messageId);
 
-        if (!AuthDataChecker.CheckAuthData(username, secret))
+        if (!AuthManager.CheckAuthData(username, secret))
         {
             await SendAndAwaitConfirmResponse(
                 UdpMessageGenerator.GenerateReplyMessage(_messageCounter, false, messageId, MessageContents.AuthFailed),
@@ -176,7 +175,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         await _currentRoom.UnsubscribeAsync(this);
         await _currentRoom.NotifyAsync(this, new MessageInfo(
             "Server",
-            MessageBuilder.GenerateLeftRoomMessage(displayName, _currentRoom.Name)
+            MessageContents.GenerateLeftRoomMessage(displayName, _currentRoom.Name)
         ));
 
         await JoinARoom(displayName, roomName);
@@ -198,7 +197,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
 
         await room.NotifyAsync(this, new MessageInfo(
             "Server",
-            MessageBuilder.GenerateJoinRoomMessage(displayName, roomName)
+            MessageContents.GenerateJoinRoomMessage(displayName, roomName)
         ));
     }
 
@@ -290,13 +289,13 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         await _currentRoom.UnsubscribeAsync(this);
         await _currentRoom.NotifyAsync(this, new MessageInfo(
             "Server",
-            MessageBuilder.GenerateLeftRoomMessage(_lastUsedDisplayName, _currentRoom.Name)
+            MessageContents.GenerateLeftRoomMessage(_lastUsedDisplayName, _currentRoom.Name)
         ));
 
         _client.Close();
         _client.Dispose();
 
-        AuthDataChecker.UnLogin(_username);
+        AuthManager.UnLogin(_username);
         _mainServer.RemoveClient(this);
         _fsmState = FsmState.End;
 
