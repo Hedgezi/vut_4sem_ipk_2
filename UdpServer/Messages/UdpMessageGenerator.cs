@@ -34,40 +34,6 @@ public static class UdpMessageGenerator
         return message;
     }
     
-    public static byte[] GenerateAuthMessage(ushort id, string username, string displayName, string secret)
-    {
-        var usernameBytes = ConvertStringToAsciiBytes(username);
-        var displayNameBytes = ConvertStringToAsciiBytes(displayName);
-        var secretBytes = ConvertStringToAsciiBytes(secret);
-        
-        var message = new byte[1 + 2 + usernameBytes.Length + displayNameBytes.Length + secretBytes.Length];
-        
-        message[0] = (byte)MessageType.AUTH;
-        BinaryPrimitives.WriteUInt16BigEndian(message.AsSpan(1, 2), id);
-        
-        Array.Copy(usernameBytes, 0, message, 3, usernameBytes.Length);
-        Array.Copy(displayNameBytes, 0, message, 3 + usernameBytes.Length, displayNameBytes.Length);
-        Array.Copy(secretBytes, 0, message, 3 + usernameBytes.Length + displayNameBytes.Length, secretBytes.Length);
-
-        return message;
-    }
-    
-    public static byte[] GenerateJoinMessage(ushort id, string channelId, string displayName)
-    {
-        var channelIdBytes = ConvertStringToAsciiBytes(channelId);
-        var displayNameBytes = ConvertStringToAsciiBytes(displayName);
-        
-        var message = new byte[1 + 2 + channelIdBytes.Length + displayNameBytes.Length];
-        
-        message[0] = (byte)MessageType.JOIN;
-        BinaryPrimitives.WriteUInt16BigEndian(message.AsSpan(1, 2), id);
-        
-        Array.Copy(channelIdBytes, 0, message, 3, channelIdBytes.Length);
-        Array.Copy(displayNameBytes, 0, message, 3 + channelIdBytes.Length, displayNameBytes.Length);
-
-        return message;
-    }
-    
     public static byte[] GenerateMsgMessage(ushort id, string displayName, string contents)
     {
         var displayNameBytes = ConvertStringToAsciiBytes(displayName);
