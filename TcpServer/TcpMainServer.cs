@@ -41,11 +41,16 @@ public class TcpMainServer
                     continue;
                 }
 
+                var username = "";
+                var displayName = "";
+                var secret = "";
+                
                 try
                 {
-                    var (username, displayName, secret) = TcpMessageParser.ParseAuthMessage(receivedMessage);
+                    (username, displayName, secret) = TcpMessageParser.ParseAuthMessage(receivedMessage);
                     await Console.Out.WriteLineAsync(
-                        $"RECV {((IPEndPoint)client.Client.RemoteEndPoint).Address}:{((IPEndPoint)client.Client.RemoteEndPoint).Port} | AUTH");
+                        $"RECV {((IPEndPoint)client.Client.RemoteEndPoint).Address}:{((IPEndPoint)client.Client.RemoteEndPoint).Port} | AUTH"
+                    );
                 }
                 catch (Exception)
                 {
@@ -54,17 +59,23 @@ public class TcpMainServer
 
                 var newClient = new TcpClientServer(
                     client,
+                    tcpMessageReceiver,
                     this,
                     (IPEndPoint)client.Client.RemoteEndPoint
                 );
 
                 _clients.Add(newClient);
                 Task.Run(() => newClient.MainLoopAsync());
-                Task.Run(() => newClient.Auth(messageId, username, displayName, secret));
+                Task.Run(() => newClient.Auth(username, displayName, secret));
             }
             catch (Exception)
             {
             }
         }
+    }
+    
+    public void RemoveClient(TcpClientServer client)
+    {
+        _clients.Remove(client);
     }
 }

@@ -6,14 +6,11 @@ public static class TcpMessageGenerator
 {
     private static readonly Encoding TextEncoding = Encoding.ASCII;
     
-    public static byte[] GenerateAuthMessage(string username, string displayName, string secret)
+    public static byte[] GenerateReplyMessage(bool result, string contents)
     {
-        return TextEncoding.GetBytes($"AUTH {username} AS {displayName} USING {secret}\r\n");
-    }
-    
-    public static byte[] GenerateJoinMessage(string channelId, string displayName)
-    {
-        return TextEncoding.GetBytes($"JOIN {channelId} AS {displayName}\r\n");
+        var resultString = result ? "OK" : "NOK";
+        
+        return TextEncoding.GetBytes($"REPLY {resultString} IS {contents}\r\n");
     }
     
     public static byte[] GenerateMsgMessage(string displayName, string contents)
