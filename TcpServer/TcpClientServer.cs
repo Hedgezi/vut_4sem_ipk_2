@@ -37,11 +37,16 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
         {
             try
             {
-                var message = await _messageReceiver.ReceiveMessageAsync(_client);
+                var message = await _messageReceiver.ReceiveMessageAsync(_client, _cancellationTokenSource.Token);
                 
-                await Console.Out.WriteLineAsync($"RECV {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {Enum.Parse(typeof(MessageType), message.Split(' ', 2)[0])}");
+                if (_cancellationTokenSource.Token.IsCancellationRequested)
+                    return;
                 
-                switch (Enum.Parse(typeof(MessageType), message.Split(' ', 2)[0]))
+                await Console.Out.WriteLineAsync(
+                    $"RECV {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {TcpMessageParser.ParseMessageType(message)}"
+                );
+                
+                switch (TcpMessageParser.ParseMessageType(message))
                 {
                     case MessageType.AUTH:
                         var (authUsername, authDisplayName, authSecret) =

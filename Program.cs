@@ -28,6 +28,6 @@ class Program
         var udpServerMainLoopTask = udpServer.AcceptNewUserLoopAsync();
         var tcpServerMainLoopTask = tcpServer.AcceptNewUserLoopAsync();
 
-        await Task.WhenAny(udpServerMainLoopTask, tcpServerMainLoopTask);
+        await Task.WhenAll(udpServerMainLoopTask, tcpServerMainLoopTask);
     }
 }

@@ -19,13 +19,18 @@ public class TcpMessageReceiver
     /// while keeping the rest in queue.
     /// </summary>
     /// <param name="client">Client to receive message</param>
+    /// <param name="token">Cancellation token</param>
     /// <returns>Message string</returns>
-    public async Task<string> ReceiveMessageAsync(TcpClient client)
+    public async Task<string> ReceiveMessageAsync(TcpClient client, CancellationToken token)
     {
         if (_queuedMessages.Count > 0)
             return _queuedMessages.Dequeue();
         
-        var receivedMessageBytes = await client.GetStream().ReadAsync(_buffer);
+        var receivedMessageBytes = await client.GetStream().ReadAsync(_buffer, token);
+        
+        // If the token is cancelled, we need to return from the method
+        if (token.IsCancellationRequested)
+            return string.Empty;
 
         // If the last message is not fully built, we need to keep it in the builder
         var lastMessageToBuild = receivedMessageBytes == BufferSize && !_buffer[^1].Equals(0x0A) && !_buffer[^2].Equals(0x0D);
@@ -35,9 +40,7 @@ public class TcpMessageReceiver
         for (var i = 0; i < receivedMessages.Length; i++)
         {
             if (string.IsNullOrEmpty(receivedMessages[i]))
-            {
                 break;
-            }
             
             // If the last message is ended with \r\n, we need to keep it in the buffer
             if (i == receivedMessages.Length - 1 && !lastMessageToBuild)

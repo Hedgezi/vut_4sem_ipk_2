@@ -14,6 +14,7 @@ public class TcpMainServer
     private readonly List<TcpClientServer> _clients = new();
 
     private readonly TcpListener _listener;
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     public TcpMainServer(IPAddress ip, int port)
     {
@@ -34,22 +35,22 @@ public class TcpMainServer
                 var client = await _listener.AcceptTcpClientAsync();
 
                 var tcpMessageReceiver = new TcpMessageReceiver();
-                var receivedMessage = await tcpMessageReceiver.ReceiveMessageAsync(client);
+                var receivedMessage = await tcpMessageReceiver.ReceiveMessageAsync(client, _cancellationTokenSource.Token);
+                
+                if (_cancellationTokenSource.Token.IsCancellationRequested)
+                    return;
 
-                if ((MessageType)Enum.Parse(typeof(MessageType), receivedMessage.Split(' ', 2)[0]) != MessageType.AUTH)
-                {
+                if (TcpMessageParser.ParseMessageType(receivedMessage) != MessageType.AUTH)
                     continue;
-                }
 
-                var username = "";
-                var displayName = "";
-                var secret = "";
+                string username, displayName, secret;
                 
                 try
                 {
                     (username, displayName, secret) = TcpMessageParser.ParseAuthMessage(receivedMessage);
+                    var endPoint = (IPEndPoint)client.Client.RemoteEndPoint!;
                     await Console.Out.WriteLineAsync(
-                        $"RECV {((IPEndPoint)client.Client.RemoteEndPoint).Address}:{((IPEndPoint)client.Client.RemoteEndPoint).Port} | AUTH"
+                        $"RECV {endPoint.Address}:{endPoint.Port} | AUTH"
                     );
                 }
                 catch (Exception)
@@ -61,7 +62,7 @@ public class TcpMainServer
                     client,
                     tcpMessageReceiver,
                     this,
-                    (IPEndPoint)client.Client.RemoteEndPoint
+                    (IPEndPoint)client.Client.RemoteEndPoint!
                 );
 
                 _clients.Add(newClient);
