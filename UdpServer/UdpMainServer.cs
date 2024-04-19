@@ -15,6 +15,7 @@ public class UdpMainServer
     private readonly List<UdpClientServer> _clients = new();
 
     private readonly UdpClient _client;
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     public UdpMainServer(IPAddress ip, int port, int confirmationTimeout, int maxRetransmissions)
     {
@@ -32,18 +33,23 @@ public class UdpMainServer
         {
             try
             {
-                var result = await _client.ReceiveAsync();
+                var result = await _client.ReceiveAsync(_cancellationTokenSource.Token);
+                
+                if (_cancellationTokenSource.Token.IsCancellationRequested)
+                    return;
 
                 if (result.Buffer[0] != (byte)MessageType.AUTH)
-                {
                     continue;
-                }
 
                 var (messageId, username, displayName, secret) = UdpMessageParser.ParseAuthMessage(result.Buffer);
-                await Console.Out.WriteLineAsync($"RECV {result.RemoteEndPoint.Address}:{result.RemoteEndPoint.Port} | AUTH");
+                await Console.Out.WriteLineAsync(
+                    $"RECV {result.RemoteEndPoint.Address}:{result.RemoteEndPoint.Port} | AUTH"
+                );
 
                 await _client.SendAsync(UdpMessageGenerator.GenerateConfirmMessage(messageId), result.RemoteEndPoint);
-                await Console.Out.WriteLineAsync($"SENT {result.RemoteEndPoint.Address}:{result.RemoteEndPoint.Port} | CONFIRM");
+                await Console.Out.WriteLineAsync(
+                    $"SENT {result.RemoteEndPoint.Address}:{result.RemoteEndPoint.Port} | CONFIRM"
+                );
 
                 var newClient = new UdpClientServer(
                     _ip,
@@ -63,7 +69,7 @@ public class UdpMainServer
             }
         }
     }
-    
+
     public void RemoveClient(UdpClientServer client)
     {
         _clients.Remove(client);

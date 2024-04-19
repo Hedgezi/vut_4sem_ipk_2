@@ -54,8 +54,10 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
 
             try
             {
-                await Console.Out.WriteLineAsync($"RECV {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {((MessageType)message[0]).ToString()}");
-                
+                await Console.Out.WriteLineAsync(
+                    $"RECV {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {((MessageType)message[0]).ToString()}"
+                );
+
                 switch ((MessageType)message[0])
                 {
                     case MessageType.CONFIRM:
@@ -81,7 +83,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
                         break;
                     case MessageType.ERR:
                         var (errMessageId, errDisplayName, errMessageContents) =
-                            UdpMessageParser.ParseMsgMessage(message); // ERR and MSG have the same structure
+                            UdpMessageParser.ParseErrMessage(message);
 
                         await Err(errMessageId, errDisplayName, errMessageContents);
                         return;
@@ -285,7 +287,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     {
         if (!_client.Client.Connected)
             return;
-        
+
         await _currentRoom.UnsubscribeAsync(this);
         await _currentRoom.NotifyAsync(this, new MessageInfo(
             "Server",
@@ -309,7 +311,9 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         for (var i = 0; i < 1 + _maxRetransmissions; i++)
         {
             await _client.SendAsync(message, message.Length);
-            await Console.Out.WriteLineAsync($"SENT {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {((MessageType)message[0]).ToString()}");
+            await Console.Out.WriteLineAsync(
+                $"SENT {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {((MessageType)message[0]).ToString()}"
+            );
 
             await Task.Delay(_confirmationTimeout);
 
