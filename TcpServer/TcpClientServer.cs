@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using vut_ipk2.Common.Enums;
 using vut_ipk2.Common.Interfaces;
 using vut_ipk2.Common.Managers;
@@ -52,18 +53,18 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
                         var (authUsername, authDisplayName, authSecret) =
                             TcpMessageParser.ParseAuthMessage(message);
 
-                        Task.Run(() => AuthRecurrent(authUsername, authDisplayName, authSecret));
+                        await AuthRecurrent(authUsername, authDisplayName, authSecret);
                         break;
                     case MessageType.JOIN:
                         var (joinRoomName, joinDisplayName) =
                             TcpMessageParser.ParseJoinMessage(message);
 
-                        Task.Run(() => Join(joinDisplayName, joinRoomName));
+                        await Join(joinDisplayName, joinRoomName);
                         break;
                     case MessageType.MSG:
                         var (msgDisplayName, msgMessage) = TcpMessageParser.ParseMsgMessage(message);
 
-                        Task.Run(() => Msg(msgDisplayName, msgMessage));
+                        await Msg(msgDisplayName, msgMessage);
                         break;
                     case MessageType.ERR:
                         var (errDisplayName, _) =
@@ -89,9 +90,22 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
     
     public async Task OnNextAsync(MessageInfo value)
     {
-        await _client.Client.SendAsync(
+        await SendMessage(
             TcpMessageGenerator.GenerateMsgMessage(value.From, value.Message)
         );
+    }
+    
+    public async Task EndSession()
+    {
+        try
+        {
+            await SendMessage(TcpMessageGenerator.GenerateByeMessage());
+        }
+        catch (SocketException)
+        {
+        }
+        
+        await EndClientServerConnection();
     }
     
     /* AUTH */
@@ -100,13 +114,13 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
     {
         if (!AuthManager.CheckAuthData(username, secret))
         {
-            await _client.Client.SendAsync(
+            await SendMessage(
                 TcpMessageGenerator.GenerateReplyMessage(false, MessageContents.AuthFailed)
             );
             return;
         }
 
-        await _client.Client.SendAsync(
+        await SendMessage(
             TcpMessageGenerator.GenerateReplyMessage(true, MessageContents.AuthSuccess)
         );
         await JoinARoom(displayName);
@@ -144,7 +158,7 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
 
         await JoinARoom(displayName, roomName);
 
-        await _client.Client.SendAsync(
+        await SendMessage(
             TcpMessageGenerator.GenerateReplyMessage(true, MessageContents.JoinSuccess)
         );
 
@@ -183,7 +197,7 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
 
     private async Task Err(string displayName)
     {
-        await _client.Client.SendAsync(TcpMessageGenerator.GenerateByeMessage());
+        await SendMessage(TcpMessageGenerator.GenerateByeMessage());
 
         _lastUsedDisplayName = displayName;
 
@@ -197,22 +211,30 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
 
     private async Task ClientError()
     {
-        await SendClientError();
+        try
+        {
+            await SendClientError();
+        }
+        catch (SocketException)
+        {
+        }
 
         await EndClientServerConnection();
     }
 
     private async Task SendClientError()
     {
-        await _client.Client.SendAsync(TcpMessageGenerator.GenerateErrMessage("Server", MessageContents.ClientError));
+        await SendMessage(TcpMessageGenerator.GenerateErrMessage("Server", MessageContents.ClientError));
 
-        await _client.Client.SendAsync(TcpMessageGenerator.GenerateByeMessage());
+        await SendMessage(TcpMessageGenerator.GenerateByeMessage());
     }
 
     private async Task EndClientServerConnection()
     {
         if (!_client.Client.Connected)
             return;
+        
+        await _cancellationTokenSource.CancelAsync();
         
         await _currentRoom.UnsubscribeAsync(this);
         await _currentRoom.NotifyAsync(this, new MessageInfo(
@@ -226,7 +248,13 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
         AuthManager.UnLogin(_username);
         _mainServer.RemoveClient(this);
         _fsmState = FsmState.End;
-
-        await _cancellationTokenSource.CancelAsync();
+    }
+    
+    private async Task SendMessage(byte[] message)
+    {
+        await _client.Client.SendAsync(message);
+        await Console.Out.WriteLineAsync(
+            $"SENT {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {TcpMessageParser.ParseMessageType(Encoding.ASCII.GetString(message))}"
+        );
     }
 }

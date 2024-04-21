@@ -116,6 +116,17 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
             _messageCounter++
         );
     }
+    
+    public async Task EndSession()
+    {
+        await SendAndAwaitConfirmResponse(
+            UdpMessageGenerator.GenerateByeMessage(_messageCounter),
+            _messageCounter++,
+            true
+        );
+        
+        await EndClientServerConnection();
+    }
 
     /* AUTH */
 
@@ -310,18 +321,28 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     {
         for (var i = 0; i < 1 + _maxRetransmissions; i++)
         {
-            await _client.SendAsync(message, message.Length);
-            await Console.Out.WriteLineAsync(
-                $"SENT {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {((MessageType)message[0]).ToString()}"
-            );
+            try
+            {
+                await _client.SendAsync(message, message.Length);
+                await Console.Out.WriteLineAsync(
+                    $"SENT {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {((MessageType)message[0]).ToString()}"
+                );
+            }
+            catch (SocketException)
+            {
+                await Console.Error.WriteLineAsync("UDP: Failed to send the message.");
+                break;
+            }
 
             await Task.Delay(_confirmationTimeout);
 
             if (_awaitedMessages.Contains(messageId))
                 return;
         }
+        
+        await Console.Error.WriteLineAsync("UDP: Client did not respond to the message.");
 
-        if (isClientError)
+        if (!isClientError)
             await SendClientError();
 
         await EndClientServerConnection();

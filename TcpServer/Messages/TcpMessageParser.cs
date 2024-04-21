@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using vut_ipk2.Common.Enums;
-using vut_ipk2.Common.Models;
 
 namespace vut_ipk2.TcpServer.Messages;
 
@@ -14,7 +13,7 @@ public static class TcpMessageParser
         
         var messageParts = message.Trim().Split(' ');
 
-        return (messageParts[1], messageParts[3], messageParts[5]);
+        return (messageParts[1], messageParts[3], messageParts[5].TrimEnd());
     }
     
     public static (string channelName, string displayName) ParseJoinMessage(string message)
@@ -25,7 +24,7 @@ public static class TcpMessageParser
         
         var messageParts = message.Trim().Split(' ');
         
-        return (messageParts[1], messageParts[3]);
+        return (messageParts[1], messageParts[3].TrimEnd());
     }
 
     public static (string displayName, string messageContents) ParseMsgMessage(string message)

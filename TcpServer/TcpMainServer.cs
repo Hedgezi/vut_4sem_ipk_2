@@ -1,14 +1,15 @@
 using System.Net;
 using System.Net.Sockets;
 using vut_ipk2.Common.Enums;
+using vut_ipk2.Common.Interfaces;
 using vut_ipk2.TcpServer.Facades;
 using vut_ipk2.TcpServer.Messages;
 
 namespace vut_ipk2.TcpServer;
 
-public class TcpMainServer
+public class TcpMainServer : IMainServer
 {
-    private readonly List<TcpClientServer> _clients = new();
+    private readonly HashSet<TcpClientServer> _clients = new();
 
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -26,7 +27,7 @@ public class TcpMainServer
         {
             try
             {
-                var client = await _listener.AcceptTcpClientAsync();
+                var client = await _listener.AcceptTcpClientAsync(_cancellationTokenSource.Token);
 
                 var tcpMessageReceiver = new TcpMessageReceiver();
                 var receivedMessage =
@@ -66,5 +67,16 @@ public class TcpMainServer
     public void RemoveClient(TcpClientServer client)
     {
         _clients.Remove(client);
+    }
+    
+    public async Task PowerOffAsync()
+    {
+        await _cancellationTokenSource.CancelAsync();
+        _listener.Stop();
+
+        HashSet<TcpClientServer> clientsToEnd = new(_clients);
+
+        foreach (var client in clientsToEnd)
+            await client.EndSession();
     }
 }

@@ -1,17 +1,18 @@
 using System.Net;
 using System.Net.Sockets;
 using vut_ipk2.Common.Enums;
+using vut_ipk2.Common.Interfaces;
 using vut_ipk2.UdpServer.Messages;
 
 namespace vut_ipk2.UdpServer;
 
-public class UdpMainServer
+public class UdpMainServer : IMainServer
 {
     private readonly IPAddress _ip;
     private readonly int _confirmationTimeout;
     private readonly int _maxRetransmissions;
 
-    private readonly List<UdpClientServer> _clients = new();
+    private readonly HashSet<UdpClientServer> _clients = new();
 
     private readonly UdpClient _client;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -70,5 +71,16 @@ public class UdpMainServer
     public void RemoveClient(UdpClientServer client)
     {
         _clients.Remove(client);
+    }
+    
+    public async Task PowerOffAsync()
+    {
+        await _cancellationTokenSource.CancelAsync();
+        _client.Close();
+        
+        HashSet<UdpClientServer> clientsToEnd = new(_clients);
+
+        foreach (var client in clientsToEnd)
+            await client.EndSession();
     }
 }
