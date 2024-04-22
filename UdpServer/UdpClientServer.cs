@@ -24,6 +24,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     private string _username;
     private readonly CancellationTokenSource _cancellationTokenSource = new(); // if server is shutting down, we need to cancel the client
 
+    private readonly SemaphoreQueue _messageProcessingQueue = new(1, 1);
     private readonly FixedSizeQueue<ushort> _awaitedMessages = new(200); // all CONFIRM messages go here
     private readonly FixedSizeQueue<ushort>
         _receivedMessages = new(200); // remember received messages for deduplication
@@ -132,6 +133,8 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
 
     public async Task Auth(ushort messageId, string username, string displayName, string secret)
     {
+        await _messageProcessingQueue.WaitAsync();
+        
         _receivedMessages.Enqueue(messageId);
 
         if (!AuthManager.CheckAuthData(username, secret))
@@ -151,6 +154,8 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         _lastUsedDisplayName = displayName;
         _username = username;
         _fsmState = FsmState.Open;
+        
+        _messageProcessingQueue.Release();
     }
 
     private async Task AuthRecurrent(ushort messageId, string username, string displayName, string secret)
@@ -173,6 +178,8 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
 
     private async Task Join(ushort messageId, string displayName, string roomName)
     {
+        await _messageProcessingQueue.WaitAsync();
+        
         if (_fsmState is not FsmState.Open)
         {
             await ClientError(messageId);
@@ -199,6 +206,8 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         );
 
         _lastUsedDisplayName = displayName;
+        
+        _messageProcessingQueue.Release();
     }
 
     private async Task JoinARoom(string displayName, string roomName = "default_room")
@@ -218,6 +227,8 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
 
     private async Task Msg(ushort messageId, string displayName, string message)
     {
+        await _messageProcessingQueue.WaitAsync();
+        
         if (_fsmState is not FsmState.Open)
         {
             await ClientError(messageId);
@@ -233,6 +244,8 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
         await _currentRoom.NotifyAsync(this, new MessageInfo(displayName, message));
 
         _lastUsedDisplayName = displayName;
+        
+        _messageProcessingQueue.Release();
     }
 
     /* CLIENT SHUTDOWN */
@@ -327,6 +340,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
                 await Console.Out.WriteLineAsync(
                     $"SENT {_remoteEndPoint.Address}:{_remoteEndPoint.Port} | {((MessageType)message[0]).ToString()}"
                 );
+                await Console.Error.WriteLineAsync($"UDP: Sent message with ID {messageId}.");
             }
             catch (SocketException)
             {

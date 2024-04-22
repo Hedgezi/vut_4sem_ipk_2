@@ -42,7 +42,7 @@ public class Room : IAsyncObservable<MessageInfo>
             if (observer == observerWhoSend && value.From != "Server")
                 continue;
             
-            await observer.OnNextAsync(value);
+            Task.Run(() => observer.OnNextAsync(value));
         }
     }
 }
