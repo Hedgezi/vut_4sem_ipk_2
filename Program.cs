@@ -12,6 +12,8 @@ class Program
     
     private static async Task Main(string[] args)
     {
+        // Handle Ctrl+C by properly shutting down all servers
+        // and sending all clients a BYE message
         Console.CancelKeyPress += async (_, e) =>
         {
             e.Cancel = true;

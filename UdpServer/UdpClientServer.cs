@@ -22,7 +22,7 @@ public class UdpClientServer : IAsyncObserver<MessageInfo>
     private Room _currentRoom;
     private string _lastUsedDisplayName;
     private string _username;
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private readonly CancellationTokenSource _cancellationTokenSource = new(); // if server is shutting down, we need to cancel the client
 
     private readonly FixedSizeQueue<ushort> _awaitedMessages = new(200); // all CONFIRM messages go here
     private readonly FixedSizeQueue<ushort>
