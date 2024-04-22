@@ -20,8 +20,22 @@ The core idea for the server and both (TCP and UDP) protocols is to have a main 
 
 ## Testing
 ### UDP
+![UDP Wireshark Testing](Docs/imgs/udp_wireshark.png "UDP Wireshark Testing")
+Testing of UDP part was done using Wireshark and my IPK24-CHAT clients. 
+On the screenshot you can see the communication between two clients and the server.
 
 ### TCP
+![TCP Wireshark Testing](Docs/imgs/tcp_wireshark.png "TCP Wireshark Testing")
+Testing of TCP part was done using Wireshark, Netcat and my IPK24-CHAT clients.
+On the screenshot you can see the communication between server, client in the same room and mock client using Netcat, 
+who sends one big message, which server successfully splits into multiple messages.
+
+### Cross-protocol testing
+![Cross-protocol Wireshark Testing](Docs/imgs/interprotocol_wireshark.png "Cross-protocol Wireshark Testing")
+Testing of Cross-protocol part was done using Wireshark and my IPK24-CHAT clients.
+On the screenshot you can see the communication between server, client in the same room connected by TCP and client
+connected by UDP with pre-made messages.
+
 
 ## Extra functionality
 CTRL+C signal handling: when the server receives a `SIGINT` signal, it properly closes all connections with `BYE` message and exits the application freeing all resources. 
