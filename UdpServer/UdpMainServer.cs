@@ -26,6 +26,7 @@ public class UdpMainServer : IMainServer
         _client = new UdpClient(new IPEndPoint(_ip, port));
     }
 
+    /// <inheritdoc />
     public async Task AcceptNewUserLoopAsync()
     {
         while (true)
@@ -73,6 +74,7 @@ public class UdpMainServer : IMainServer
         _clients.Remove(client);
     }
     
+    /// <inheritdoc />
     public async Task PowerOffAsync()
     {
         await _cancellationTokenSource.CancelAsync();

@@ -19,6 +19,7 @@ public class TcpMainServer : IMainServer
         _listener = new TcpListener(new IPEndPoint(ip, port));
     }
 
+    /// <inheritdoc />
     public async Task AcceptNewUserLoopAsync()
     {
         _listener.Start();
@@ -67,6 +68,7 @@ public class TcpMainServer : IMainServer
         _clients.Remove(client);
     }
     
+    /// <inheritdoc />
     public async Task PowerOffAsync()
     {
         await _cancellationTokenSource.CancelAsync();

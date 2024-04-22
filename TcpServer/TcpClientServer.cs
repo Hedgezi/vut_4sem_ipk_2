@@ -252,6 +252,8 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
         _fsmState = FsmState.End;
     }
     
+    /* HELPERS */
+    
     private async Task SendMessage(byte[] message)
     {
         await _client.Client.SendAsync(message);
