@@ -39,7 +39,6 @@ public class TcpMainServer : IMainServer
                 if (TcpMessageParser.ParseMessageType(receivedMessage) != MessageType.AUTH)
                     continue;
 
-
                 var (username, displayName, secret) = TcpMessageParser.ParseAuthMessage(receivedMessage);
                 
                 var endPoint = (IPEndPoint)client.Client.RemoteEndPoint!;
@@ -55,8 +54,7 @@ public class TcpMainServer : IMainServer
                 );
 
                 _clients.Add(newClient);
-                Task.Run(() => newClient.MainLoopAsync());
-                Task.Run(() => newClient.Auth(username, displayName, secret));
+                Task.Run(() => newClient.MainLoopAsync(username, displayName, secret));
             }
             catch (Exception)
             {

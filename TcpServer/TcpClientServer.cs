@@ -20,7 +20,7 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
     private Room _currentRoom;
     private string _lastUsedDisplayName;
     private string _username;
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private readonly CancellationTokenSource _cancellationTokenSource = new(); // if server is shutting down, we need to cancel the client
     
     private readonly TcpClient _client;
     
@@ -32,8 +32,10 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
         _mainServer = mainServer;
     }
     
-    public async Task MainLoopAsync()
+    public async Task MainLoopAsync(string username, string displayName, string secret)
     {
+        await Auth(username, displayName, secret);
+        
         while (true)
         {
             try
@@ -110,7 +112,7 @@ public class TcpClientServer : IAsyncObserver<MessageInfo>
     
     /* AUTH */
 
-    public async Task Auth(string username, string displayName, string secret)
+    private async Task Auth(string username, string displayName, string secret)
     {
         if (!AuthManager.CheckAuthData(username, secret))
         {
